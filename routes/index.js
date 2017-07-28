@@ -779,8 +779,9 @@ router.post('/productsPurchased', function (req, res, next) {
         res.json({"message": "You are not currently logged in"})
     } else {
         //TODO check in elasticdb for all products
-        var statementsql = "select orders,products from purchasecatalog where user = '" + sess.uid + "';";
+        var statementsql = "select orders,products from purchasecatalog where user = '" + req.body.username + "';";
         var prodMap = {};
+        var unique = []
         console.log(statementsql)
         pool.getConnection(function (err, connection) {
             if (err) {
@@ -795,11 +796,13 @@ router.post('/productsPurchased', function (req, res, next) {
                 }
                 results.forEach(function (row) {
                     var arr = row.orders.split(";");
+
                     var names = row.products.split(";");
                     names.forEach(function (item) {
                         if (item == "") {
                         } else {
                             if (prodMap[String(item)] == undefined) {
+                                unique.push(String(item));
                                 prodMap[String(item)] = 1;
                             } else {
                                 prodMap[String(item)] = prodMap[String(item)] + 1;
@@ -807,7 +810,13 @@ router.post('/productsPurchased', function (req, res, next) {
                         }
                     })
                 })
-                res.json({"message": "The action was successful", "products": prodMap});
+
+                prodValues = []
+                for (var i = 0; i < unique.length; i++) {
+                    var another = { "productName" :unique[i], "quantity" : prodMap[unique[i]]}
+                    prodValues.push(another);
+                }
+                res.json({"message": "The action was successful", "products": prodValues});
             });
             connection.on('error', function (err) {
                 console.log(err);
