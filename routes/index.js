@@ -732,7 +732,7 @@ router.post('/viewProductsLegacy', function (req, res, next) {
 });
 
 router.post('/buyProducts', function (req, res, next) {
-    console.log(req.body)
+    //console.log(req.body)
     var sess = req.session;
     if (sess.uid == undefined || sess.uid == null) {
         res.json({"message": "You are not currently logged in"})
@@ -758,8 +758,8 @@ router.post('/buyProducts', function (req, res, next) {
                 if (hits == undefined || hits.length == 0) {
                     res.json({"message": "There are no products that match that criteria"})
                 } else {
-                    a += item.asin + ";"
-                    b += hits[0]._source.title + ";"
+                    a += item.asin + "`"
+                    b += hits[0]._source.title + "`"
                     counter++;
                     if (counter == req.body.products.length) {
                         insertIntoDB(req, res, a, b, sess);
@@ -798,9 +798,9 @@ router.post('/productsPurchased', function (req, res, next) {
                     throw error;
                 }
                 results.forEach(function (row) {
-                    var arr = row.orders.split(";");
+                    var arr = row.orders.split("`");
 
-                    var names = row.products.split(";");
+                    var names = row.products.split("`");
                     names.forEach(function (item) {
                         if (item == "") {
                         } else {
@@ -835,7 +835,7 @@ router.post('/getRecommendations', function (req, res, next) {
         res.json({"message": "You are not currently logged in"})
     } else {
         var a = ""
-        a += req.body.asin + ";"
+        a += req.body.asin + "`"
         console.log(a);
         var statementsql = "select orders,products from purchasecatalog where orders like '%" + a + "%';";
         var prodMap = {};
@@ -852,8 +852,8 @@ router.post('/getRecommendations', function (req, res, next) {
                     throw error;
                 }
                 results.forEach(function (row) {
-                    var arr = row.orders.split(";");
-                    var names = row.products.split(";");
+                    var arr = row.orders.split("`");
+                    var names = row.products.split("`");
                     names.forEach(function (item) {
                         if (item == req.body.asin || item == "") {
                         } else {
