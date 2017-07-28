@@ -766,6 +766,9 @@ router.post('/buyProducts', function (req, res, next) {
                     }
                 }
             }, function (err) {
+                console.log(err)
+                err = null
+
                 res.json({"message": "There are no products that match that criteria"})
             });
         })
@@ -884,13 +887,14 @@ function insertIntoDB(req, res, a, b, sess) {
     pool.getConnection(function (err, connection) {
         if (err) {
             connection.release();
+            console.log(err)
             throw err;
         }
         connection.query(statementsql, function (error, results) {
             connection.release()
             if (error) {
                 console.log(error)
-                throw error;
+                //throw error;
             }
             //console.log('added');
         });
