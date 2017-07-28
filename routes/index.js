@@ -5,15 +5,44 @@ var async = require('asyncawait/async');
 var await = require('asyncawait/await');
 var mysql = require('mysql');
 
-
 var pool = mysql.createPool({
     connectionLimit: 1000,
-    host: 'ec2-54-162-6-64.compute-1.amazonaws.com',
+    host: 'localhost',
     port: '3306',
     user: 'root',
     password: 'password',
     database: 'my_db',
     debug: false
+});
+
+var elasticsearch = require('elasticsearch');
+
+// configure the region for aws-sdk
+var AWS = require('aws-sdk');
+AWS.config.update({region: 'us-east-1'});
+
+AWS.config.update({
+    credentials: new AWS.Credentials("AKIAIRDBXUEGI2AZLE7Q", "Y2ojvB+m46gNmZDBRNpkuLJC6aU4WzH0DXwnhsTV")
+});
+
+var client = require('elasticsearch').Client({
+    hosts: ['https://search-ediss-4x2xdo62fx7t757xo5eaequuay.us-east-1.es.amazonaws.com'],
+    connectionClass: require('http-aws-es')
+});
+
+/*var client = new elasticsearch.Client({
+ host: 'http://elastic:changeme@192.168.99.100:9200'
+ });*/
+
+client.ping({
+    // ping usually has a 3000ms timeout
+    requestTimeout: 1000
+}, function (error) {
+    if (error) {
+        console.trace('elasticsearch cluster is down!');
+    } else {
+        console.log('All is well');
+    }
 });
 
 router.post('/add', function (req, res, next) {
@@ -126,7 +155,7 @@ router.post('/logout', function (req, res, next) {
     }
 });
 router.post('/register', function (req, res, next) {
-    bcrypt.hash(req.body.password, 10, function (err, hash) {
+    bcrypt.hash(req.body.password, 1, function (err, hash) {
 
         //console.log([req.body.username, hash, req.body.firstName,req.body.lastName])
         var myparams = [req.body.username, hash, req.body.firstName, req.body.lastName]
@@ -325,7 +354,7 @@ router.post('/updateInfo', function (req, res, next) {
     }
 })
 
-router.post('/addProducts', function (req, res, next) {
+router.post('/addProductsLegacy', function (req, res, next) {
     var sess = req.session
     console.log(sess.role);
     if (sess.uid == undefined || sess.uid == null) {
@@ -375,7 +404,36 @@ router.post('/addProducts', function (req, res, next) {
     }
 });
 
-router.post('/modifyProduct', function (req, res, next) {
+router.post('/addProducts', function (req, res, next) {
+    var sess = req.session
+    console.log(sess.role);
+    if (sess.uid == undefined || sess.uid == null) {
+        res.json({"message": "You are not currently logged in"})
+    } else if (sess.role == undefined || sess.role == null || sess.role != "admin") {
+        res.json({"message": "You must be an admin to perform this action"})
+    } else {
+        client.search({
+            index: 'products',
+            type: 'products',
+            body: {
+                query: {
+                    match: {
+                        asin: req.body.asin
+                    }
+                }
+            }
+        }).then(function (resp) {
+            res.json({"message": "The input you provided is not valid"});
+        }, function (err) {
+            insertIntoES(req, res, next, "insert");
+            console.trace(err.message);
+        });
+
+    }
+});
+
+
+router.post('/modifyProductLegacy', function (req, res, next) {
     var sess = req.session
     if (sess.uid == undefined || sess.uid == null) {
         // console.log(sess.uid)
@@ -436,6 +494,41 @@ router.post('/modifyProduct', function (req, res, next) {
     }
 })
 
+router.post('/modifyProduct', function (req, res, next) {
+    var sess = req.session
+    if (sess.uid == undefined || sess.uid == null) {
+        // console.log(sess.uid)
+        //res.status(400);
+        res.json({"message": "You are not currently logged in"})
+    } else if (sess.role == undefined || sess.role == null || sess.role != "admin") {
+        //res.status(400);
+        res.json({"message": "You must be an admin to perform this action"})
+    } else {
+        insertIntoES(req, res, next, "modify");
+    }
+})
+
+function insertIntoES(req, res, next, str) {
+    client.index({
+        index: 'products',
+        type: 'products',
+        body: {
+            asin: req.body.asin,
+            catagories: req.body.group,
+            description: req.body.productDescription,
+            title: req.body.productName
+        }
+
+    }).then(function (resp) {
+        if (str == "insert") {
+            res.json({"message": req.body.productName + " was successfully added to the system"})
+        } else {
+            res.json({"message": req.body.productName + " was successfully updated"})
+        }
+    }, function (err) {
+        console.trace(err.message);
+    });
+}
 
 router.post('/viewUsers', function (req, res, next) {
     var sess = req.session
@@ -502,8 +595,75 @@ router.post('/viewUsers', function (req, res, next) {
     }
 })
 
-
 router.post('/viewProducts', function (req, res, next) {
+
+    var asinWhere = ""
+    var keywordWhere = ""
+    var groupWhere = ""
+    if (req.body.asin != null || req.body.asin != undefined) {
+        client.search({
+            index: 'products',
+            type: 'products',
+            body: {
+                query: {
+                    match: {
+                        asin: req.body.asin
+                    }
+                }
+            }
+
+        }).then(function (resp) {
+            var hits = resp.hits.hits;
+            if (hits == undefined || hits.length == 0) {
+                res.json({"message": "There are no products that match that criteria"})
+            } else {
+                var prodValues = []
+                for (var i = 0; i < hits.length; i++) {
+                    var prods  = hits[i]._source;
+                    var another = { "asin" :prods.asin, "productName" : prods.title }
+                    prodValues.push(another);
+                }
+                res.json({"product": prodValues})
+            }
+        }, function (err) {
+            console.trace(err.message);
+        });
+    } else if (req.body.keyword != null || req.body.keyword != undefined) {
+        client.search({
+            index: 'products',
+            type: 'products',
+            body: {
+                query: {
+                    multi_match: {
+                        query: req.body.keyword,
+                        fields: ["title", "description"]
+                    }
+                }
+            }
+        }).then(function (resp) {
+            var hits = resp.hits.hits;
+            if (hits == undefined || hits.length == 0) {
+                res.json({"message": "There are no products that match that criteria"})
+            } else {
+                var prodValues = []
+                for (var i = 0; i < hits.length; i++) {
+                    var prods  = hits[i]._source;
+                    var another = { "asin" :prods.asin, "productName" : prods.title }
+                    prodValues.push(another);
+                }
+                res.json({"product": prodValues})
+            }
+        }, function (err) {
+            console.trace(err.message);
+        });
+    }
+    if (req.body.group != null || req.body.group != undefined) {
+        groupWhere = req.body.group;
+    }
+})
+;
+
+router.post('/viewProductsLegacy', function (req, res, next) {
 
     var asinWhere = null
     var keywordWhere = null
@@ -558,7 +718,7 @@ router.post('/viewProducts', function (req, res, next) {
                 if (results.length == 0) {
                     res.json({"message": "There are no products that match that criteria"})
                 } else {
-                    results = JSON.parse(JSON.stringify(results).split('"username":').join('"userId":'));
+                    //results = JSON.parse(JSON.stringify(results).split('"username":').join('"userId":'));
                     res.json({"product": results});
                 }
             }
@@ -569,7 +729,169 @@ router.post('/viewProducts', function (req, res, next) {
         });
     });
 
-})
+});
+
+router.post('/buyProducts', function (req, res, next) {
+    console.log(req.body)
+    var sess = req.session;
+    if (sess.uid == undefined || sess.uid == null) {
+        res.json({"message": "You are not currently logged in"})
+    } else {
+
+        var a = ""
+        var b = ""
+        var counter = 0;
+        //TODO change this to product name
+        req.body.products.forEach(function (item) {
+            client.search({
+                index: 'products',
+                type: 'products',
+                body: {
+                    query: {
+                        match: {
+                            asin: item.asin
+                        }
+                    }
+                }
+            }).then(function (resp) {
+                var hits = resp.hits.hits;
+                if (hits == undefined || hits.length == 0) {
+                    res.json({"message": "There are no products that match that criteria"})
+                } else {
+                    a += item.asin + ";"
+                    b += hits[0]._source.title + ";"
+                    counter++;
+                    if (counter == req.body.products.length) {
+                        insertIntoDB(req, res, a, b, sess);
+                    }
+                }
+            }, function (err) {
+                res.json({"message": "There are no products that match that criteria"})
+            });
+        })
+
+    }
+});
+
+router.post('/productsPurchased', function (req, res, next) {
+    var sess = req.session;
+    if (sess.uid == undefined || sess.uid == null) {
+        res.json({"message": "You are not currently logged in"})
+    } else {
+        //TODO check in elasticdb for all products
+        var statementsql = "select orders,products from purchasecatalog where user = '" + sess.uid + "';";
+        var prodMap = {};
+        console.log(statementsql)
+        pool.getConnection(function (err, connection) {
+            if (err) {
+                connection.release();
+                throw err;
+            }
+            connection.query(statementsql, function (error, results) {
+                connection.release()
+                if (error) {
+                    console.log(error)
+                    throw error;
+                }
+                results.forEach(function (row) {
+                    var arr = row.orders.split(";");
+                    var names = row.products.split(";");
+                    names.forEach(function (item) {
+                        if (item == "") {
+                        } else {
+                            if (prodMap[String(item)] == undefined) {
+                                prodMap[String(item)] = 1;
+                            } else {
+                                prodMap[String(item)] = prodMap[String(item)] + 1;
+                            }
+                        }
+                    })
+                })
+                res.json({"message": "The action was successful", "products": prodMap});
+            });
+            connection.on('error', function (err) {
+                console.log(err);
+                return;
+            });
+        });
+    }
+});
+
+router.post('/getRecommendations', function (req, res, next) {
+    var sess = req.session;
+    if (sess.uid == undefined || sess.uid == null) {
+        res.json({"message": "You are not currently logged in"})
+    } else {
+        var a = ""
+        a += req.body.asin + ";"
+        console.log(a);
+        var statementsql = "select orders,products from purchasecatalog where orders like '%" + a + "%';";
+        var prodMap = {};
+        console.log(statementsql)
+        pool.getConnection(function (err, connection) {
+            if (err) {
+                connection.release();
+                throw err;
+            }
+            connection.query(statementsql, function (error, results) {
+                connection.release()
+                if (error) {
+                    console.log(error)
+                    throw error;
+                }
+                results.forEach(function (row) {
+                    var arr = row.orders.split(";");
+                    var names = row.products.split(";");
+                    names.forEach(function (item) {
+                        if (item == req.body.asin || item == "") {
+                        } else {
+                            if (prodMap[String(item)] == undefined) {
+                                prodMap[String(item)] = 1;
+                            } else {
+                                prodMap[String(item)] = prodMap[String(item)] + 1;
+                            }
+                        }
+                    })
+                })
+                console.log(prodMap.length)
+                if (prodMap.length == undefined || prodMap.length == 0) {
+                    res.json({"message": "There are no recommendations for that product"});
+                } else {
+                    res.json({"message": "The action was successful", "products": prodMap});
+                }
+            });
+            connection.on('error', function (err) {
+                console.log(err);
+                return;
+            });
+        });
+    }
+});
+
+function insertIntoDB(req, res, a, b, sess) {
+    console.log(a);
+    var statementsql = "insert into purchasecatalog (`orders`, `user`,`products`) values(" + "'" + a + "'," + "'" + sess.uid + "','" + b + "');";
+    console.log(statementsql)
+    pool.getConnection(function (err, connection) {
+        if (err) {
+            connection.release();
+            throw err;
+        }
+        connection.query(statementsql, function (error, results) {
+            connection.release()
+            if (error) {
+                console.log(error)
+                throw error;
+            }
+            //console.log('added');
+        });
+        connection.on('error', function (err) {
+            console.log(err);
+            return;
+        });
+    });
+    res.json({"message": "The action was successful"})
+}
 
 function checkParameters(req, res, callback) {
     var message = null;
