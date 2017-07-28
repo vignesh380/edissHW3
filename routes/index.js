@@ -758,7 +758,7 @@ router.post('/buyProducts', function (req, res, next) {
                 if (hits == undefined || hits.length == 0) {
                     res.json({"message": "There are no products that match that criteria"})
                 } else {
-                    a += item.asin + "`"
+                    a += hits[0]._source.asin + "`"
                     b += hits[0]._source.title + "`"
                     counter++;
                     if (counter == req.body.products.length) {
