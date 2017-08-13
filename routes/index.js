@@ -31,7 +31,7 @@ AWS.config.update({
 // });
 
 var client = new elasticsearch.Client({
- host: 'http://z7dzpxdp1y:5fm4yk1r9g@first-cluster-2623333101.us-east-1.bonsaisearch.net/'
+ host: 'http://ng1tjsoguu:jeq5pyese9@test-2850031780.us-east-1.bonsaisearch.net/'
  });
 
 client.ping({
