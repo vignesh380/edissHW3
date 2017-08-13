@@ -25,14 +25,14 @@ AWS.config.update({
     credentials: new AWS.Credentials("AKIAIRDBXUEGI2AZLE7Q", "Y2ojvB+m46gNmZDBRNpkuLJC6aU4WzH0DXwnhsTV")
 });
 
-var client = require('elasticsearch').Client({
-    hosts: ['https://search-ediss-4x2xdo62fx7t757xo5eaequuay.us-east-1.es.amazonaws.com'],
-    connectionClass: require('http-aws-es')
-});
+// var client = require('elasticsearch').Client({
+//     hosts: ['https://search-ediss-4x2xdo62fx7t757xo5eaequuay.us-east-1.es.amazonaws.com'],
+//     connectionClass: require('http-aws-es')
+// });
 
-/*var client = new elasticsearch.Client({
- host: 'http://elastic:changeme@192.168.99.100:9200'
- });*/
+var client = new elasticsearch.Client({
+ host: 'http://z7dzpxdp1y:5fm4yk1r9g@first-cluster-2623333101.us-east-1.bonsaisearch.net/'
+ });
 
 client.ping({
     // ping usually has a 3000ms timeout
